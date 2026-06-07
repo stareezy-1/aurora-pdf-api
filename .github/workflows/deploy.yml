@@ -36,13 +36,13 @@ jobs:
         env:
           DOTENV: ${{ secrets.DOTENV }}
 
-      - name: Copy .env to VPS
+      - name: Copy files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: .env
+          source: ".env,docker-compose.yml"
           target: ~/aurora-pdf-api/
           strip_components: 0
 
