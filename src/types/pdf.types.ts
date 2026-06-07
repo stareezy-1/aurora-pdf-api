@@ -106,9 +106,20 @@ export interface ReportRequest {
   /** Footer totals / balance summary */
   summary?: ReportSummaryRow[];
   config?: BasePageConfig & {
+    /**
+     * Currency code (preferred) or raw symbol.
+     * Supported codes: IDR, USD, EUR, GBP, JPY, SGD, MYR, THB, PHP, AUD
+     * Raw symbols also accepted: "Rp", "$", "€", etc.
+     * Default: "IDR" — formats as Rp 152.670 (no decimals, id-ID locale)
+     */
     currency?: string;
+    /**
+     * BCP 47 locale string for number formatting, e.g. "id-ID", "en-US".
+     * When a known currency code is passed, locale is auto-resolved.
+     * Default: "id-ID"
+     */
     locale?: string;
-    /** Primary accent colour (table headers, KPI bg). Default #22c55e (green) */
+    /** Primary accent colour (table headers, header band). Default #22c55e (green) */
     accentColor?: string;
     /** Show "Generated on …" line. Default true */
     showGeneratedAt?: boolean;
@@ -181,7 +192,12 @@ export interface InvoiceRequest {
   taxRate?: number;
   /** Discount amount (absolute, applied before tax) */
   discount?: number;
+  /**
+   * Currency code (IDR, USD, EUR …) or raw symbol.
+   * Default: "IDR" → Rp 152.670 (no decimals)
+   */
   currency?: string;
+  /** BCP 47 locale. Auto-resolved from currency code if omitted. Default: "id-ID" */
   locale?: string;
   notes?: string;
   /** Hex colour for header accent. Default #1e40af */
@@ -207,7 +223,12 @@ export interface ReceiptRequest {
   items: ReceiptItem[];
   taxRate?: number;
   discount?: number;
+  /**
+   * Currency code (IDR, USD, EUR …) or raw symbol.
+   * Default: "IDR" → Rp 152.670 (no decimals)
+   */
   currency?: string;
+  /** BCP 47 locale. Auto-resolved from currency code if omitted. Default: "id-ID" */
   locale?: string;
   paymentMethod?: string;
   notes?: string;

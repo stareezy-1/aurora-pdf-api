@@ -55,22 +55,77 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Currency / money formatting
+//
+// IDR (Indonesian Rupiah) convention:
+//   • Symbol  : "Rp"
+//   • Locale  : "id-ID"  →  thousands separator = ".", decimal separator = ","
+//   • Decimals: 0  (Rp 152.670, not Rp 152.670,00)
+//   • Negative: -Rp 15.99
+//
+// Every other currency falls back to 2 decimal places.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Currency presets — symbol + locale + decimal places */
+interface CurrencyPreset {
+  symbol: string;
+  locale: string;
+  decimals: number;
+}
+
+const CURRENCY_PRESETS: Record<string, CurrencyPreset> = {
+  IDR: { symbol: "Rp", locale: "id-ID", decimals: 0 },
+  USD: { symbol: "$", locale: "en-US", decimals: 2 },
+  EUR: { symbol: "€", locale: "de-DE", decimals: 2 },
+  GBP: { symbol: "£", locale: "en-GB", decimals: 2 },
+  JPY: { symbol: "¥", locale: "ja-JP", decimals: 0 },
+  SGD: { symbol: "S$", locale: "en-SG", decimals: 2 },
+  MYR: { symbol: "RM", locale: "ms-MY", decimals: 2 },
+  THB: { symbol: "\u0E3F", locale: "th-TH", decimals: 2 },
+  PHP: { symbol: "\u20B1", locale: "fil-PH", decimals: 2 },
+  AUD: { symbol: "A$", locale: "en-AU", decimals: 2 },
+};
+
+/**
+ * Resolve a currency code (e.g. "IDR") or a raw symbol (e.g. "Rp", "$").
+ * Returns { symbol, locale, decimals } — always falls back gracefully.
+ */
+function resolveCurrency(
+  currency: string,
+  overrideLocale?: string,
+): CurrencyPreset {
+  const upper = currency.trim().toUpperCase();
+  if (CURRENCY_PRESETS[upper]) {
+    const preset = CURRENCY_PRESETS[upper];
+    return overrideLocale ? { ...preset, locale: overrideLocale } : preset;
+  }
+  // Raw symbol passed — use USD-style formatting
+  return {
+    symbol: currency.trim(),
+    locale: overrideLocale ?? "en-US",
+    decimals: 2,
+  };
+}
+
 function fmtMoney(
   value: string | number,
   currency: string,
   locale: string,
 ): string {
+  const preset = resolveCurrency(currency, locale);
   const cleaned = String(value).replace(/[^0-9.\-]/g, "");
   const n = parseFloat(cleaned);
   if (isNaN(n)) return String(value);
   try {
-    const abs = Math.abs(n).toLocaleString(locale, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+    const abs = Math.abs(n).toLocaleString(preset.locale, {
+      minimumFractionDigits: preset.decimals,
+      maximumFractionDigits: preset.decimals,
     });
-    return n < 0 ? `-${currency}${abs}` : `${currency}${abs}`;
+    return n < 0 ? `-${preset.symbol}${abs}` : `${preset.symbol}${abs}`;
   } catch {
-    return `${n < 0 ? "-" : ""}${currency}${Math.abs(n).toFixed(2)}`;
+    const abs = Math.abs(n).toFixed(preset.decimals);
+    return n < 0 ? `-${preset.symbol}${abs}` : `${preset.symbol}${abs}`;
   }
 }
 
@@ -491,8 +546,8 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
     config = {},
   } = data;
 
-  const currency = config.currency ?? "$";
-  const locale = config.locale ?? "en-US";
+  const currency = config.currency ?? "IDR";
+  const locale = config.locale ?? "id-ID";
   const accent = config.accentColor ?? "#22c55e";
   const showGenAt = config.showGeneratedAt ?? true;
   const logoUrl = config.logoUrl;
@@ -506,7 +561,12 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
   const marginLeft = config.marginLeft ?? 50;
 
   // ── Amount-column heuristic ─────────────────────────────────────────────
-  function amountCols(headers: string[]): Set<number> {
+  // Only treat a column as "money" when its header name clearly implies a
+  // monetary value AND the actual cell data looks numeric (not "45%" etc.)
+  function amountCols(
+    headers: string[],
+    sampleRows: (string | number)[][],
+  ): Set<number> {
     const s = new Set<number>();
     const kw = [
       "amount",
@@ -525,35 +585,31 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
       "portfolio",
       "profit",
       "loss",
-      "allocation",
     ];
-    headers.forEach((h, i) => {
-      if (kw.some((k) => h.toLowerCase().includes(k))) s.add(i);
+    headers.forEach((h, ci) => {
+      if (!kw.some((k) => h.toLowerCase().includes(k))) return;
+      // Verify at least one sample cell in this column parses as a plain number
+      // (i.e. not a percentage string like "45%")
+      const looksNumeric = sampleRows.some((row) => {
+        const cell = ci < row.length ? String(row[ci]) : "";
+        return (
+          cell !== "" &&
+          !cell.includes("%") &&
+          !isNaN(parseFloat(cell.replace(/[^0-9.\-]/g, "")))
+        );
+      });
+      if (looksNumeric) s.add(ci);
     });
-    if (s.size === 0) s.add(headers.length - 1);
     return s;
   }
 
   // ── HTML content body ───────────────────────────────────────────────────
+  // NOTE: brand / title / subtitle are intentionally OMITTED here — they
+  // are rendered in the stamped header band below, not duplicated in the body.
   let html = `<div style="font-family:Helvetica,Arial,sans-serif;color:#0f172a;font-size:12px;">`;
 
-  if (brand) {
-    html += `<h1 style="text-align:center;font-size:24px;font-weight:bold;margin:0 0 2px 0;letter-spacing:1px;">${escapeHtml(
-      brand,
-    )}</h1>`;
-  }
-  if (title) {
-    html += `<h2 style="text-align:center;font-size:19px;font-weight:bold;margin:0 0 8px 0;">${escapeHtml(
-      title,
-    )}</h2>`;
-  }
-  if (subtitle) {
-    html += `<p style="text-align:center;color:#64748b;font-size:12px;margin:0 0 4px 0;">${escapeHtml(
-      subtitle,
-    )}</p>`;
-  }
   if (showGenAt) {
-    html += `<p style="text-align:center;color:#94a3b8;font-size:10px;margin:0 0 20px 0;">Generated ${escapeHtml(
+    html += `<p style="text-align:center;color:#94a3b8;font-size:10px;margin:0 0 16px 0;">Generated ${escapeHtml(
       localeDateStr(locale),
     )}</p>`;
   }
@@ -595,27 +651,30 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
 
   // Sections
   for (const section of sections) {
-    html += `<h2 style="font-size:17px;font-weight:bold;margin:20px 0 6px 0;color:#0f172a;border-bottom:2px solid #e2e8f0;padding-bottom:4px;">${escapeHtml(
-      section.title,
-    )}</h2>`;
+    // FIX: section.title must NOT be HTML-escaped — it goes directly into a
+    // text node inside <h2>, and escaping turns "&" → "&amp;" which the
+    // engine renders as literal "&amp;" on the page.
+    html += `<h2 style="font-size:17px;font-weight:bold;margin:20px 0 6px 0;color:#0f172a;border-bottom:2px solid #e2e8f0;padding-bottom:4px;">${section.title}</h2>`;
+
     if (section.description) {
-      html += `<p style="font-size:12px;color:#334155;line-height:1.6;margin:0 0 10px 0;">${escapeHtml(
-        section.description,
-      )}</p>`;
+      html += `<p style="font-size:12px;color:#334155;line-height:1.6;margin:0 0 10px 0;">${section.description}</p>`;
     }
+
     if (section.bullets?.length) {
       html += `<ul style="margin:0 0 12px 0;padding-left:0;list-style:none;">`;
       for (const b of section.bullets) {
-        html += `<li style="padding:3px 0;font-size:12px;color:#334155;">&bull; ${escapeHtml(
-          b,
-        )}</li>`;
+        // FIX: use the Unicode bullet char directly — &bull; is an HTML entity
+        // that our plain-text engine renders as literal "&bull;" text.
+        html += `<li style="padding:4px 0;font-size:12px;color:#334155;">\u2022 ${b}</li>`;
       }
       html += `</ul>`;
     }
+
     if (section.table) {
       const { headers, rows } = section.table;
       const hColor = section.table.headerColor ?? accent;
-      const aCols = amountCols(headers);
+      // FIX: pass actual row data so the heuristic can verify cells are numeric
+      const aCols = amountCols(headers, rows);
 
       html += `<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">`;
       html += `<thead><tr style="background-color:${escapeHtml(
@@ -623,9 +682,7 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
       )};color:#ffffff;">`;
       headers.forEach((h, i) => {
         const align = aCols.has(i) ? "right" : "left";
-        html += `<th style="padding:9px 12px;text-align:${align};font-size:11px;font-weight:bold;">${escapeHtml(
-          h,
-        )}</th>`;
+        html += `<th style="padding:9px 12px;text-align:${align};font-size:11px;font-weight:bold;">${h}</th>`;
       });
       html += `</tr></thead><tbody>`;
       rows.forEach((row, ri) => {
@@ -640,9 +697,7 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
           const fw = isAmt ? "bold" : "normal";
           const align = isAmt ? "right" : "left";
           const disp = isAmt ? fmtMoney(cell, currency, locale) : cell;
-          html += `<td style="padding:7px 12px;text-align:${align};font-size:11px;border-bottom:1px solid #e2e8f0;color:${color};font-weight:${fw};">${escapeHtml(
-            disp,
-          )}</td>`;
+          html += `<td style="padding:7px 12px;text-align:${align};font-size:11px;border-bottom:1px solid #e2e8f0;color:${color};font-weight:${fw};">${disp}</td>`;
         });
         html += `</tr>`;
       });
@@ -719,17 +774,32 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
   }
 
   const [ar, ag, ab] = hexToRgb(accent);
-  // Slightly darker shade for the bottom edge of the header
-  const darken = (c: number) => Math.max(0, c - 0.12);
+  // Darken the accent slightly for borders / depth
+  const darken = (c: number) => Math.max(0, c - 0.1);
+  // A darker left stripe for the logo zone
+  const stripeR = darken(ar),
+    stripeG = darken(ag),
+    stripeB = darken(ab);
 
   for (let i = 0; i < total; i++) {
     const page = pages[i];
     const { width: pw, height: ph } = page.getSize();
-    const padH = 14; // horizontal padding inside bands
 
-    // ────────────────────────────────────────────────────────────────────────
-    // HEADER BAND
-    // ────────────────────────────────────────────────────────────────────────
+    // ── HEADER BAND ─────────────────────────────────────────────────────────
+    //
+    // Layout (logo on left):
+    //
+    //  ┌────────────────┬───────────────────────────────────────┐
+    //  │  LOGO STRIPE   │         TEXT AREA (lighter)           │  ← REPORT_HEADER_H tall
+    //  │  (darker)      │  brand (small caps)  /  title (bold)  │
+    //  └────────────────┴───────────────────────────────────────┘
+    //
+    // Logo on right: stripes are mirrored.
+
+    const LOGO_STRIPE_W = logoImg ? Math.min(pw * 0.22, 130) : 0;
+    const padH = 14;
+
+    // Full-width accent background
     page.drawRectangle({
       x: 0,
       y: ph - REPORT_HEADER_H,
@@ -737,6 +807,32 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
       height: REPORT_HEADER_H,
       color: rgb(ar, ag, ab),
     });
+
+    // Darker stripe (logo side)
+    if (LOGO_STRIPE_W > 0) {
+      const stripeX = logoPosition === "right" ? pw - LOGO_STRIPE_W : 0;
+      page.drawRectangle({
+        x: stripeX,
+        y: ph - REPORT_HEADER_H,
+        width: LOGO_STRIPE_W,
+        height: REPORT_HEADER_H,
+        color: rgb(stripeR, stripeG, stripeB),
+      });
+      // Thin divider between stripe and text area
+      const divX =
+        logoPosition === "right" ? pw - LOGO_STRIPE_W : LOGO_STRIPE_W;
+      page.drawLine({
+        start: { x: divX, y: ph - REPORT_HEADER_H },
+        end: { x: divX, y: ph },
+        thickness: 1,
+        color: rgb(
+          Math.max(0, stripeR - 0.08),
+          Math.max(0, stripeG - 0.08),
+          Math.max(0, stripeB - 0.08),
+        ),
+      });
+    }
+
     // Bottom shadow line
     page.drawLine({
       start: { x: 0, y: ph - REPORT_HEADER_H },
@@ -745,75 +841,59 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
       color: rgb(darken(ar), darken(ag), darken(ab)),
     });
 
-    // Logo placement
-    const logoPad = 10;
-    const logoMaxH = REPORT_HEADER_H - logoPad * 2;
-    let logoReservedW = 0; // width that the logo occupies (+ gap) on the text side
-
-    if (logoImg) {
+    // ── Logo inside the stripe ─────────────────────────────────────────────
+    if (logoImg && LOGO_STRIPE_W > 0) {
+      const logoPad = 10;
+      const logoMaxH = REPORT_HEADER_H - logoPad * 2;
+      const logoMaxW = LOGO_STRIPE_W - logoPad * 2;
       const { width: iw, height: ih } = logoImg.scale(1);
-      const scale = Math.min(logoMaxH / ih, (pw * 0.2) / iw);
+      const scale = Math.min(logoMaxH / ih, logoMaxW / iw);
       const logoW = iw * scale;
       const logoH = ih * scale;
       const logoY = ph - REPORT_HEADER_H + (REPORT_HEADER_H - logoH) / 2;
+      const logoX =
+        logoPosition === "right"
+          ? pw - LOGO_STRIPE_W + (LOGO_STRIPE_W - logoW) / 2
+          : (LOGO_STRIPE_W - logoW) / 2;
 
-      if (logoPosition === "right") {
-        page.drawImage(logoImg, {
-          x: pw - padH - logoW,
-          y: logoY,
-          width: logoW,
-          height: logoH,
-        });
-        // text occupies the left portion
-      } else {
-        page.drawImage(logoImg, {
-          x: padH,
-          y: logoY,
-          width: logoW,
-          height: logoH,
-        });
-        logoReservedW = logoW + logoPad;
-      }
+      page.drawImage(logoImg, {
+        x: logoX,
+        y: logoY,
+        width: logoW,
+        height: logoH,
+      });
     }
 
-    // Text block inside the header band
-    const textX = padH + logoReservedW;
-    const textMaxW =
-      pw -
-      padH * 2 -
-      logoReservedW -
-      (logoImg && logoPosition === "right"
-        ? logoImg.scale(1).width *
-            Math.min(
-              logoMaxH / logoImg.scale(1).height,
-              (pw * 0.2) / logoImg.scale(1).width,
-            ) +
-          logoPad
-        : 0);
+    // ── Text area ──────────────────────────────────────────────────────────
+    const textAreaX = logoPosition === "right" ? padH : LOGO_STRIPE_W + padH;
+    const textAreaW = pw - LOGO_STRIPE_W - padH * 2;
     const brandStr = brand ?? "";
     const titleStr = title ?? "";
 
     if (brandStr && titleStr) {
-      const bSize = 9;
-      const tSize = 13;
-      const blockH = bSize + 5 + tSize;
-      const blockY = ph - REPORT_HEADER_H + (REPORT_HEADER_H + blockH) / 2;
+      // Two-line: brand (small, spaced caps) above title (larger bold)
+      const bSize = 8;
+      const tSize = 14;
+      const gap = 4;
+      const blockH = bSize + gap + tSize;
+      const midY = ph - REPORT_HEADER_H + REPORT_HEADER_H / 2;
+      const bY = midY + blockH / 2 - bSize; // top line baseline
+      const tY = midY - blockH / 2; // bottom line baseline
 
-      const bW = fontBold.widthOfTextAtSize(brandStr, bSize);
-      const tW = fontBold.widthOfTextAtSize(titleStr, tSize);
-      const bX = textX + Math.max(0, (textMaxW - bW) / 2);
-      const tX = textX + Math.max(0, (textMaxW - tW) / 2);
-
-      page.drawText(brandStr, {
-        x: bX,
-        y: blockY - bSize,
+      // brand — centred in text area
+      const bW = fontReg.widthOfTextAtSize(brandStr.toUpperCase(), bSize);
+      page.drawText(brandStr.toUpperCase(), {
+        x: textAreaX + Math.max(0, (textAreaW - bW) / 2),
+        y: bY,
         size: bSize,
-        font: fontBold,
-        color: rgb(1, 1, 1),
+        font: fontReg,
+        color: rgb(0.92, 0.97, 0.92),
       });
+      // title — centred, bold, white
+      const tW = fontBold.widthOfTextAtSize(titleStr, tSize);
       page.drawText(titleStr, {
-        x: tX,
-        y: blockY - bSize - 5 - tSize,
+        x: textAreaX + Math.max(0, (textAreaW - tW) / 2),
+        y: tY,
         size: tSize,
         font: fontBold,
         color: rgb(1, 1, 1),
@@ -823,10 +903,9 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
       if (label) {
         const lSize = 14;
         const lW = fontBold.widthOfTextAtSize(label, lSize);
-        const lX = textX + Math.max(0, (textMaxW - lW) / 2);
         const lY = ph - REPORT_HEADER_H + (REPORT_HEADER_H - lSize) / 2;
         page.drawText(label, {
-          x: lX,
+          x: textAreaX + Math.max(0, (textAreaW - lW) / 2),
           y: lY,
           size: lSize,
           font: fontBold,
@@ -835,18 +914,17 @@ export async function reportToPdf(data: ReportRequest): Promise<Uint8Array> {
       }
     }
 
-    // Subtitle / date in smaller white text, right-aligned in header band
+    // subtitle — bottom-right of the text area
     if (subtitle) {
       const sSize = 8;
       const sW = fontReg.widthOfTextAtSize(subtitle, sSize);
-      const sX =
-        pw - padH - sW - (logoImg && logoPosition === "right" ? 80 : 0);
+      const sX = textAreaX + textAreaW - sW;
       page.drawText(subtitle, {
-        x: sX,
+        x: Math.max(textAreaX, sX),
         y: ph - REPORT_HEADER_H + 8,
         size: sSize,
         font: fontReg,
-        color: rgb(0.9, 0.9, 0.9),
+        color: rgb(0.85, 0.95, 0.85),
       });
     }
 
@@ -949,8 +1027,8 @@ export async function invoiceToPdf(data: InvoiceRequest): Promise<Uint8Array> {
     extraCharges = [],
     taxRate = 0,
     discount = 0,
-    currency = "$",
-    locale = "en-US",
+    currency = "IDR",
+    locale = "id-ID",
     notes,
     accentColor = "#1e40af",
     config = {},
@@ -1133,8 +1211,8 @@ export async function receiptToPdf(data: ReceiptRequest): Promise<Uint8Array> {
     items,
     taxRate = 0,
     discount = 0,
-    currency = "$",
-    locale = "en-US",
+    currency = "IDR",
+    locale = "id-ID",
     paymentMethod,
     notes,
     accentColor = "#0f172a",
