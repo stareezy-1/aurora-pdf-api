@@ -388,6 +388,18 @@ export async function markdownToPdf(
   return renderHtmlToPdf(html, options);
 }
 
+function fmtAmount(value: string | number, currency: string, locale: string): string {
+  const s = String(value).replace(/[^0-9.\-]/g, "");
+  const n = parseFloat(s);
+  if (isNaN(n)) return String(value);
+  const formatted = Math.abs(n).toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (n < 0) return `(${currency}${formatted})`;
+  return `${currency}${formatted}`;
+}
+
 export async function reportToPdf(data: {
   title?: string;
   subtitle?: string;
@@ -419,75 +431,65 @@ export async function reportToPdf(data: {
   } = data;
 
   const currency = config.currency || "$";
-  const headerColor = config.tableHeaderColor || "#2563eb";
-  const accentColor = config.accentColor || "#3b82f6";
+  const locale = config.locale || "en-US";
+  const headerColor = config.tableHeaderColor || "#1e40af";
 
-  let html = `<div style="font-family:Helvetica,Arial,sans-serif;padding:10px 0;">`;
+  let html = `<div style="font-family:Helvetica,Arial,sans-serif;">`;
 
   if (title) {
-    html += `<h1 style="text-align:center;color:#1e293b;margin-bottom:4px;">${escapeHtml(title)}</h1>`;
+    html += `<h1 style="text-align:center;color:#1e293b;margin:0 0 4px 0;">${escapeHtml(title)}</h1>`;
   }
   if (subtitle) {
-    html += `<p style="text-align:center;color:#64748b;margin-top:0;font-size:13px;">${escapeHtml(subtitle)}</p>`;
+    html += `<p style="text-align:center;color:#64748b;margin:0 0 20px 0;font-size:13px;">${escapeHtml(subtitle)}</p>`;
   }
 
-  const alignments = headers.map((h, i) => {
-    const lastIdx = headers.length - 1;
-    if (i === 0) return "left";
-    if (headers.some((_, j) => j > lastIdx)) return "left";
-    return "left";
-  });
+  const lastCol = headers.length - 1;
 
-  const lastColIdx = headers.length - 1;
-
-  html += `<table style="width:100%;border-collapse:collapse;margin-top:16px;">\n<thead>\n<tr style="background-color:${headerColor};color:white;">`;
+  html += `<table style="width:100%;border-collapse:collapse;">`;
+  html += `<thead><tr style="background-color:${headerColor};color:#ffffff;">`;
   for (let i = 0; i < headers.length; i++) {
-    const align = i === lastColIdx ? "right" : "left";
-    html += `<th style="padding:10px 12px;text-align:${align};font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(headers[i])}</th>`;
+    const align = i === lastCol ? "right" : "left";
+    html += `<th style="padding:10px 14px;text-align:${align};font-size:11px;">${escapeHtml(headers[i])}</th>`;
   }
-  html += "</tr>\n</thead>\n<tbody>\n";
+  html += `</tr></thead><tbody>`;
 
   for (let ri = 0; ri < rows.length; ri++) {
     const row = rows[ri];
-    const bgColor = ri % 2 === 0 ? "#f8fafc" : "#ffffff";
-    html += `<tr style="background-color:${bgColor};">`;
+    const bg = ri % 2 === 0 ? "#f8fafc" : "#ffffff";
+    html += `<tr style="background-color:${bg};">`;
     for (let ci = 0; ci < row.length && ci < headers.length; ci++) {
       const cell = String(row[ci]);
-      const align = ci === lastColIdx ? "right" : "left";
-      const isAmount = ci === lastColIdx || (ci > 0 && headers[ci]?.toLowerCase().includes("amount"));
-      const cellStyle = `padding:8px 12px;text-align:${align};font-size:12px;${isAmount ? "font-variant-numeric:tabular-nums;" : ""}`;
-      const cellContent = isAmount && !cell.includes(currency) && !isNaN(parseFloat(cell.replace(/[$,€£¥\s]/g, "")))
-        ? `${currency}${parseFloat(cell.replace(/[$,€£¥\s]/g, "")).toLocaleString(config.locale || "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : cell;
-      html += `<td style="${cellStyle}">${escapeHtml(cellContent)}</td>`;
+      const isAmount = ci === lastCol || (ci > 0 && (headers[ci] ?? "").toLowerCase().includes("amount"));
+      const align = ci === lastCol ? "right" : "left";
+      const display = isAmount ? fmtAmount(cell, currency, locale) : cell;
+      html += `<td style="padding:8px 14px;text-align:${align};font-size:12px;">${escapeHtml(display)}</td>`;
     }
-    html += "</tr>\n";
+    html += `</tr>`;
   }
 
-  html += "</tbody>\n</table>\n";
+  html += `</tbody></table>`;
 
   if (summary && summary.length > 0) {
-    html += `<div style="margin-top:24px;border-top:2px solid #e2e8f0;padding-top:16px;">`;
+    html += `<div style="margin-top:24px;"><table style="width:100%;border-collapse:collapse;">`;
     for (const item of summary) {
       const color = item.style === "positive" ? "#16a34a"
         : item.style === "negative" ? "#dc2626"
         : item.style === "bold" ? "#1e293b"
         : "#475569";
-      const fontWeight = item.style === "bold" ? "bold" : "normal";
-      const fontSize = item.style === "bold" ? "16px" : "14px";
-      html += `<div style="display:flex;justify-content:space-between;padding:4px 12px;font-size:${fontSize};color:${color};font-weight:${fontWeight};">`;
-      html += `<span>${escapeHtml(item.label)}</span>`;
-      const val = String(item.value);
-      const valFormatted = !val.includes(currency) && !isNaN(parseFloat(val.replace(/[$,€£¥\s]/g, "")))
-        ? `${currency}${parseFloat(val.replace(/[$,€£¥\s]/g, "")).toLocaleString(config.locale || "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : val;
-      html += `<span>${escapeHtml(valFormatted)}</span>`;
-      html += `</div>`;
+      const fw = item.style === "bold" ? "bold" : "normal";
+      const fs = item.style === "bold" ? "15px" : "13px";
+      const val = fmtAmount(item.value, currency, locale);
+      html += `<tr><td style="padding:5px 14px;text-align:left;font-size:${fs};color:${color};font-weight:${fw};">${escapeHtml(item.label)}</td>`;
+      html += `<td style="padding:5px 14px;text-align:right;font-size:${fs};color:${color};font-weight:${fw};">${escapeHtml(val)}</td></tr>`;
     }
-    html += "</div>";
+    html += `</table></div>`;
   }
 
-  html += "</div>";
+  if (config.footerText) {
+    html += `<p style="text-align:center;color:#94a3b8;font-size:9px;margin-top:30px;">${escapeHtml(config.footerText)}</p>`;
+  }
+
+  html += `</div>`;
 
   return renderHtmlToPdf(html, config);
 }

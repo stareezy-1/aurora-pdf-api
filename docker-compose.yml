@@ -1,0 +1,8 @@
+services:
+  aurora-pdf-api:
+    image: ghcr.io/stareezy-1/aurora-pdf-api:latest
+    build: .
+    ports:
+      - "127.0.0.1:4000:4000"
+    env_file: .env
+    restart: unless-stopped
