@@ -1,4 +1,10 @@
-import { PDFDocument, PDFPage, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import {
+  PDFDocument,
+  PDFPage,
+  StandardFonts,
+  rgb,
+  type PDFFont,
+} from "pdf-lib";
 
 type RgbColor = [number, number, number];
 
@@ -75,8 +81,6 @@ const PAGE_SIZES: Record<string, [number, number]> = {
 };
 
 const BLACK: RgbColor = [0, 0, 0];
-const WHITE: RgbColor = [1, 1, 1];
-const TRANSPARENT: RgbColor | null = null;
 
 function hexToRgb(hex: string): RgbColor {
   const h = hex.replace("#", "");
@@ -122,10 +126,6 @@ function resolveColor(value: string | undefined | null): RgbColor | null {
     ];
   }
   return null;
-}
-
-function fmt(v: string | undefined | null): string {
-  return (v || "").trim();
 }
 
 const DEFAULT_STYLES: Styles = {
@@ -177,7 +177,10 @@ function parseStyles(styleStr: string | undefined | null): Partial<Styles> {
         break;
       }
       case "font-weight": {
-        s.fontWeight = v === "bold" || v === "700" || v === "800" || v === "900" ? "bold" : "normal";
+        s.fontWeight =
+          v === "bold" || v === "700" || v === "800" || v === "900"
+            ? "bold"
+            : "normal";
         break;
       }
       case "font-style": {
@@ -194,30 +197,45 @@ function parseStyles(styleStr: string | undefined | null): Partial<Styles> {
         break;
       }
       case "padding": {
-        const parts = v.split(" ").map(parseFloat);
-        if (parts.length === 1 && !isNaN(parts[0])) s.padding = [parts[0], parts[0], parts[0], parts[0]];
-        else if (parts.length === 2 && parts.every((n) => !isNaN(n))) s.padding = [parts[0], parts[1], parts[0], parts[1]];
-        else if (parts.length === 4 && parts.every((n) => !isNaN(n))) s.padding = [parts[0], parts[1], parts[2], parts[3]];
+        const parts = v.split(/\s+/).map(parseFloat);
+        if (parts.length === 1 && !isNaN(parts[0]))
+          s.padding = [parts[0], parts[0], parts[0], parts[0]];
+        else if (parts.length === 2 && parts.every((n) => !isNaN(n)))
+          s.padding = [parts[0], parts[1], parts[0], parts[1]];
+        else if (parts.length === 4 && parts.every((n) => !isNaN(n)))
+          s.padding = [parts[0], parts[1], parts[2], parts[3]];
         break;
       }
       case "padding-top": {
         const n = parseFloat(v);
-        if (!isNaN(n)) s.padding = [n, (s.padding || [0, 0, 0, 0])[1], (s.padding || [0, 0, 0, 0])[2], (s.padding || [0, 0, 0, 0])[3]];
+        if (!isNaN(n)) {
+          const p = s.padding ?? [0, 0, 0, 0];
+          s.padding = [n, p[1], p[2], p[3]];
+        }
         break;
       }
       case "padding-bottom": {
         const n = parseFloat(v);
-        if (!isNaN(n)) s.padding = [(s.padding || [0, 0, 0, 0])[0], (s.padding || [0, 0, 0, 0])[1], n, (s.padding || [0, 0, 0, 0])[3]];
+        if (!isNaN(n)) {
+          const p = s.padding ?? [0, 0, 0, 0];
+          s.padding = [p[0], p[1], n, p[3]];
+        }
         break;
       }
       case "padding-left": {
         const n = parseFloat(v);
-        if (!isNaN(n)) s.padding = [(s.padding || [0, 0, 0, 0])[0], (s.padding || [0, 0, 0, 0])[1], (s.padding || [0, 0, 0, 0])[2], n];
+        if (!isNaN(n)) {
+          const p = s.padding ?? [0, 0, 0, 0];
+          s.padding = [p[0], p[1], p[2], n];
+        }
         break;
       }
       case "padding-right": {
         const n = parseFloat(v);
-        if (!isNaN(n)) s.padding = [(s.padding || [0, 0, 0, 0])[0], n, (s.padding || [0, 0, 0, 0])[2], (s.padding || [0, 0, 0, 0])[3]];
+        if (!isNaN(n)) {
+          const p = s.padding ?? [0, 0, 0, 0];
+          s.padding = [p[0], n, p[2], p[3]];
+        }
         break;
       }
       case "width": {
@@ -232,28 +250,46 @@ function parseStyles(styleStr: string | undefined | null): Partial<Styles> {
 
 function tagStyles(tag: string | undefined): Partial<Styles> {
   switch (tag) {
-    case "h1": return { fontWeight: "bold", fontSize: 24, padding: [8, 0, 4, 0] };
-    case "h2": return { fontWeight: "bold", fontSize: 20, padding: [6, 0, 3, 0] };
-    case "h3": return { fontWeight: "bold", fontSize: 16, padding: [5, 0, 2, 0] };
-    case "h4": return { fontWeight: "bold", fontSize: 14, padding: [4, 0, 2, 0] };
-    case "h5": return { fontWeight: "bold", fontSize: 12, padding: [3, 0, 1, 0] };
-    case "h6": return { fontWeight: "bold", fontSize: 11, padding: [3, 0, 1, 0] };
+    case "h1":
+      return { fontWeight: "bold", fontSize: 22, padding: [8, 0, 6, 0] };
+    case "h2":
+      return { fontWeight: "bold", fontSize: 18, padding: [6, 0, 4, 0] };
+    case "h3":
+      return { fontWeight: "bold", fontSize: 15, padding: [5, 0, 3, 0] };
+    case "h4":
+      return { fontWeight: "bold", fontSize: 13, padding: [4, 0, 2, 0] };
+    case "h5":
+      return { fontWeight: "bold", fontSize: 12, padding: [3, 0, 2, 0] };
+    case "h6":
+      return { fontWeight: "bold", fontSize: 11, padding: [3, 0, 1, 0] };
     case "strong":
-    case "b": return { fontWeight: "bold" };
+    case "b":
+      return { fontWeight: "bold" };
     case "em":
-    case "i": return { fontStyle: "italic" };
+    case "i":
+      return { fontStyle: "italic" };
+    case "td":
+      return { padding: [6, 8, 6, 8] };
+    // FIX: separate th case so bold is not shadowed
     case "th":
-    case "td": return { padding: [6, 8, 6, 8] };
-    case "th": return { fontWeight: "bold" };
-    case "p": return { padding: [4, 0, 4, 0] };
-    case "li": return { padding: [2, 0, 2, 0] };
-    case "blockquote": return { fontStyle: "italic", padding: [4, 0, 4, 20] };
+      return { fontWeight: "bold", padding: [6, 8, 6, 8] };
+    case "p":
+      return { padding: [4, 0, 4, 0] };
+    case "li":
+      return { padding: [2, 0, 2, 0] };
+    case "blockquote":
+      return { fontStyle: "italic", padding: [4, 0, 4, 20] };
     case "code":
-    case "pre": return { fontFamily: "monospace", fontSize: 9 };
-    default: return {};
+    case "pre":
+      return { fontFamily: "monospace", fontSize: 9 };
+    default:
+      return {};
   }
 }
 
+// ---------------------------------------------------------------------------
+// HTML Parser — fixed: closing-tag regex now operates on substring(pos)
+// ---------------------------------------------------------------------------
 function parseHtml(html: string): PdfNode[] {
   const root: PdfNode[] = [];
   let pos = 0;
@@ -280,7 +316,8 @@ function parseHtml(html: string): PdfNode[] {
     while ((m = singleRe.exec(raw)) !== null) {
       attrs[m[1].toLowerCase()] = m[2];
     }
-    const boolRe = /\b(checked|selected|disabled|readonly|required|multiple|autofocus|hidden)\b/gi;
+    const boolRe =
+      /\b(checked|selected|disabled|readonly|required|multiple|autofocus|hidden)\b/gi;
     while ((m = boolRe.exec(raw)) !== null) {
       attrs[m[1].toLowerCase()] = "";
     }
@@ -289,10 +326,16 @@ function parseHtml(html: string): PdfNode[] {
 
   while (pos < html.length) {
     const nextOpen = html.indexOf("<", pos);
+
     if (nextOpen === -1) {
       const text = html.substring(pos).trim();
       if (text) {
-        addNode({ type: "text", children: [], text, styles: { ...DEFAULT_STYLES } });
+        addNode({
+          type: "text",
+          children: [],
+          text,
+          styles: { ...DEFAULT_STYLES },
+        });
       }
       break;
     }
@@ -301,32 +344,61 @@ function parseHtml(html: string): PdfNode[] {
       const text = html.substring(pos, nextOpen);
       const trimmed = text.trim();
       if (trimmed) {
-        addNode({ type: "text", children: [], text: trimmed, styles: { ...DEFAULT_STYLES } });
+        addNode({
+          type: "text",
+          children: [],
+          text: trimmed,
+          styles: { ...DEFAULT_STYLES },
+        });
       }
     }
 
-    const closeMatch = html.match(/^<\s*\/\s*(\w+)\s*>/);
-    if (closeMatch && html.indexOf("<", pos) === pos) {
-      const tag = closeMatch[1].toLowerCase();
-      if (stack.length > 0 && stack[stack.length - 1].tag === tag) {
-        stack.pop();
-      }
-      pos += closeMatch[0].length;
-      continue;
-    }
+    // FIX: apply closing-tag regex to html.substring(pos), not the full string
+    const remaining = html.substring(nextOpen);
 
-    const commentMatch = html.substring(pos).match(/^<!--[\s\S]*?-->/);
+    const commentMatch = remaining.match(/^<!--[\s\S]*?-->/);
     if (commentMatch) {
-      pos += commentMatch[0].length;
+      pos = nextOpen + commentMatch[0].length;
       continue;
     }
 
-    const tagMatch = html.substring(pos).match(/^<(\w[\w-]*)([^>]*?)\/?\s*>/);
+    const closeMatch = remaining.match(/^<\s*\/\s*(\w+)\s*>/);
+    if (closeMatch) {
+      const tag = closeMatch[1].toLowerCase();
+      // pop the stack until we find the matching open tag
+      for (let si = stack.length - 1; si >= 0; si--) {
+        if (stack[si].tag === tag) {
+          stack.splice(si);
+          break;
+        }
+      }
+      pos = nextOpen + closeMatch[0].length;
+      continue;
+    }
+
+    const tagMatch = remaining.match(/^<(\w[\w-]*)([^>]*?)\/?\s*>/);
     if (tagMatch) {
       const tag = tagMatch[1].toLowerCase();
       const rawAttrs = tagMatch[2];
       const attrs = extractAttrs(rawAttrs);
-      const selfClosing = !!(tagMatch[0].endsWith("/>") || ["br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"].includes(tag));
+      const selfClosing = !!(
+        tagMatch[0].endsWith("/>") ||
+        [
+          "br",
+          "hr",
+          "img",
+          "input",
+          "meta",
+          "link",
+          "area",
+          "base",
+          "col",
+          "embed",
+          "source",
+          "track",
+          "wbr",
+        ].includes(tag)
+      );
 
       const node: PdfNode = {
         type: "element",
@@ -337,7 +409,10 @@ function parseHtml(html: string): PdfNode[] {
       };
 
       const styleOverride = parseStyles(attrs.style);
-      node.styles = mergeStyles({ ...DEFAULT_STYLES, ...tagStyles(tag) }, styleOverride);
+      node.styles = mergeStyles(
+        { ...DEFAULT_STYLES, ...tagStyles(tag) },
+        styleOverride,
+      );
 
       if (tag === "body" || tag === "html") {
         node.styles = mergeStyles(node.styles, { padding: [0, 0, 0, 0] });
@@ -353,24 +428,29 @@ function parseHtml(html: string): PdfNode[] {
         stack.push(node);
       }
 
-      pos += tagMatch[0].length;
+      pos = nextOpen + tagMatch[0].length;
       continue;
     }
 
-    pos++;
+    // unrecognised '<', skip it
+    pos = nextOpen + 1;
   }
 
   return root;
 }
 
-function textWidth(text: string, font: PDFFont, size: number): number {
-  return font.widthOfTextAtSize(text, size);
-}
+// ---------------------------------------------------------------------------
+// Text helpers
+// ---------------------------------------------------------------------------
 
 function findFont(ctx: RenderCtx, styles: Styles): PDFFont {
   const bold = styles.fontWeight === "bold";
   const italic = styles.fontStyle === "italic";
-  if (styles.fontFamily === "monospace" || styles.fontFamily?.includes("mono") || styles.fontFamily?.includes("courier")) {
+  if (
+    styles.fontFamily === "monospace" ||
+    styles.fontFamily?.includes("mono") ||
+    styles.fontFamily?.includes("courier")
+  ) {
     if (bold) return ctx.fonts.monoBold;
     return ctx.fonts.mono;
   }
@@ -393,7 +473,13 @@ function ensureSpace(ctx: RenderCtx, needed: number) {
   }
 }
 
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+function wrapText(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string[] {
+  if (!text) return [];
   const lines: string[] = [];
   const words = text.split(" ");
   let current = "";
@@ -407,93 +493,62 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
     }
   }
   if (current) lines.push(current);
-  return lines;
+  return lines.length > 0 ? lines : [""];
 }
 
-interface TextRender {
-  text: string;
-  font: PDFFont;
-  size: number;
-  color: RgbColor;
-  x: number;
-  y: number;
-  align: "left" | "center" | "right";
-  width: number;
-}
-
-function arrangeText(
-  text: string,
-  font: PDFFont,
-  size: number,
-  maxWidth: number,
-  align: "left" | "center" | "right",
-  color: RgbColor,
-  x: number,
-  y: number,
-): TextRender[] {
-  const lines = wrapText(text, font, size, maxWidth);
-  return lines.map((line) => {
-    const w = font.widthOfTextAtSize(line, size);
-    let lx = x;
-    if (align === "center") lx = x + (maxWidth - w) / 2;
-    else if (align === "right") lx = x + maxWidth - w;
-    return { text: line, font, size, color, x: lx, y, align, width: w };
-  });
-}
-
-function drawRects(ctx: RenderCtx, x: number, y: number, w: number, h: number, color: RgbColor) {
-  ctx.page.drawRectangle({
-    x, y, width: w, height: h, color: rgb(color[0], color[1], color[2]),
-  });
-}
-
-function drawLine(ctx: RenderCtx, x1: number, y1: number, x2: number, y2: number, color: RgbColor, thickness: number) {
-  ctx.page.drawLine({
-    start: { x: x1, y: y1 },
-    end: { x: x2, y: y2 },
-    thickness,
-    color: rgb(color[0], color[1], color[2]),
-  });
-}
-
-function drawBorders(ctx: RenderCtx, x: number, y: number, w: number, h: number, styles: Styles, borderColor: RgbColor = [0.8, 0.8, 0.8]) {
-  if (styles.borderTop) drawLine(ctx, x, y, x + w, y, borderColor, 0.5);
-  if (styles.borderBottom) drawLine(ctx, x, y + h, x + w, y + h, borderColor, 0.5);
-  if (styles.borderLeft) drawLine(ctx, x, y, x, y + h, borderColor, 0.5);
-  if (styles.borderRight) drawLine(ctx, x + w, y, x + w, y + h, borderColor, 0.5);
-}
-
+// ---------------------------------------------------------------------------
+// FIX: renderTextContent — draw each wrapped line at the current ctx.y,
+// advancing ctx.y after each line. The `y` param is now unused (kept for
+// compat) because ctx.y is the single source of truth.
+// ---------------------------------------------------------------------------
 function renderTextContent(
   ctx: RenderCtx,
   text: string,
   styles: Styles,
   x: number,
-  y: number,
+  _y: number,
   maxWidth: number,
 ): number {
+  if (!text) return 0;
   const font = findFont(ctx, styles);
   const size = computeFontSize(styles, 11);
-  const renders = arrangeText(text, font, size, maxWidth, styles.textAlign, styles.color ?? BLACK, x, y);
+  const lineH = size + 3;
+  const color = styles.color ?? BLACK;
 
-  for (const r of renders) {
-    ensureSpace(ctx, size + 2);
-    if (ctx.y - (size + 2) < y - (renders.length * (size + 2))) {
-      y = ctx.y;
-    }
-    ctx.page.drawText(r.text, {
-      x: r.x,
-      y: ctx.y,
-      size: r.size,
-      font: r.font,
-      color: rgb(r.color[0], r.color[1], r.color[2]),
+  const lines = wrapText(text, font, size, maxWidth);
+  let totalH = 0;
+
+  for (const line of lines) {
+    ensureSpace(ctx, lineH);
+
+    const w = font.widthOfTextAtSize(line, size);
+    let lx = x;
+    if (styles.textAlign === "center") lx = x + (maxWidth - w) / 2;
+    else if (styles.textAlign === "right") lx = x + maxWidth - w;
+
+    ctx.page.drawText(line, {
+      x: lx,
+      y: ctx.y - size,
+      size,
+      font,
+      color: rgb(color[0], color[1], color[2]),
     });
-    ctx.y -= size + 2;
+    ctx.y -= lineH;
+    totalH += lineH;
   }
 
-  return renders.length * (size + 2);
+  return totalH;
 }
 
-function renderNode(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number): number {
+// ---------------------------------------------------------------------------
+// Node renderer
+// ---------------------------------------------------------------------------
+function renderNode(
+  ctx: RenderCtx,
+  node: PdfNode,
+  x: number,
+  maxWidth: number,
+): number {
   if (node.type === "text" && node.text) {
     const lines = node.text.split("\n");
     let totalHeight = 0;
@@ -542,15 +597,13 @@ function renderNode(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number):
       const indent = 20;
       ensureSpace(ctx, 10);
 
-      const lineX = x + 3;
       const quoteY = ctx.y + 2;
-      const children = node.children;
+      ctx.y -= 2;
+
       let totalH = 0;
       const innerX = x + indent;
 
-      ctx.y -= 2;
-
-      for (const child of children) {
+      for (const child of node.children) {
         const h = renderNode(ctx, child, innerX, maxWidth - indent);
         totalH += h;
       }
@@ -568,35 +621,35 @@ function renderNode(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number):
     const contentW = maxWidth - pl - pr;
 
     if (style.bgColor) {
-      let blockH = 0;
+      ensureSpace(ctx, 8);
       const startY = ctx.y;
 
-      ensureSpace(ctx, 8);
-
       for (const child of node.children) {
-        const h = renderNode(ctx, child, contentX, contentW);
-        blockH += h;
+        renderNode(ctx, child, contentX, contentW);
       }
 
       const rectH = Math.abs(ctx.y - startY) + 4;
-      const rectY = ctx.y + (ctx.y > startY ? 0 : -(rectH - 4));
+      const rectY = ctx.y;
 
-      if (tag === "div" || tag === "p" || ["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
-        drawRects(ctx, x + (pl > 0 ? pl : 0), rectY - 2, maxWidth - (pl > 0 ? pl : 0) - (pr > 0 ? pr : 0), rectH, style.bgColor);
+      if (
+        tag === "div" ||
+        tag === "p" ||
+        ["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)
+      ) {
+        drawRects(ctx, x, rectY - 2, maxWidth, rectH, style.bgColor);
       }
 
-      ctx.y = rectY - 2;
       return rectH;
     }
 
     if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
-      ensureSpace(ctx, computeFontSize(style, 16) + 8);
+      ensureSpace(ctx, computeFontSize(style, 16) + 12);
       ctx.y -= pt;
       for (const child of node.children) {
         renderNode(ctx, child, contentX, contentW);
       }
-      ctx.y -= pb;
-      return pt + pb + computeFontSize(style, 16) + 4;
+      ctx.y -= pb + 2;
+      return pt + pb + computeFontSize(style, 16) + 6;
     }
 
     if (tag === "p" || tag === "div" || tag === "span") {
@@ -609,11 +662,27 @@ function renderNode(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number):
       return pt + pb;
     }
 
-    if (["strong", "b", "em", "i", "code", "u", "a", "s", "del", "sup", "sub"].includes(tag)) {
+    if (
+      [
+        "strong",
+        "b",
+        "em",
+        "i",
+        "code",
+        "u",
+        "a",
+        "s",
+        "del",
+        "sup",
+        "sub",
+      ].includes(tag)
+    ) {
       for (const child of node.children) {
         if (child.type === "text" && child.text) {
           child.styles = mergeStyles(child.styles, tagStyles(tag));
-          child.styles = mergeStyles(child.styles, { color: style.color ?? child.styles.color });
+          child.styles = mergeStyles(child.styles, {
+            color: style.color ?? child.styles.color,
+          });
           renderNode(ctx, child, x, maxWidth);
         } else {
           renderNode(ctx, child, x, maxWidth);
@@ -630,13 +699,20 @@ function renderNode(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number):
   return 0;
 }
 
-function renderPre(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number): number {
+// ---------------------------------------------------------------------------
+// Pre / code block
+// ---------------------------------------------------------------------------
+function renderPre(
+  ctx: RenderCtx,
+  node: PdfNode,
+  x: number,
+  maxWidth: number,
+): number {
   ensureSpace(ctx, 12);
 
   const bgY = ctx.y;
   const bgColor: RgbColor = [0.95, 0.95, 0.97];
 
-  let totalH = 0;
   const indent = 10;
   ctx.y -= 6;
 
@@ -644,18 +720,40 @@ function renderPre(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number): 
     if (child.type === "element" && child.tag === "code") {
       for (const c of child.children) {
         if (c.type === "text" && c.text) {
-          c.styles = mergeStyles(c.styles, { fontFamily: "monospace", fontSize: 9, color: [0.15, 0.15, 0.2] });
+          c.styles = mergeStyles(c.styles, {
+            fontFamily: "monospace",
+            fontSize: 9,
+            color: [0.15, 0.15, 0.2],
+          });
           const lines = c.text.split("\n");
           for (const line of lines) {
-            renderTextContent(ctx, line, c.styles, x + indent, ctx.y, maxWidth - indent * 2);
+            renderTextContent(
+              ctx,
+              line,
+              c.styles,
+              x + indent,
+              ctx.y,
+              maxWidth - indent * 2,
+            );
           }
         }
       }
     } else if (child.type === "text" && child.text) {
-      child.styles = mergeStyles(child.styles, { fontFamily: "monospace", fontSize: 9, color: [0.15, 0.15, 0.2] });
+      child.styles = mergeStyles(child.styles, {
+        fontFamily: "monospace",
+        fontSize: 9,
+        color: [0.15, 0.15, 0.2],
+      });
       const lines = child.text.split("\n");
       for (const line of lines) {
-        renderTextContent(ctx, line, child.styles, x + indent, ctx.y, maxWidth - indent * 2);
+        renderTextContent(
+          ctx,
+          line,
+          child.styles,
+          x + indent,
+          ctx.y,
+          maxWidth - indent * 2,
+        );
       }
     } else {
       renderNode(ctx, child, x + indent, maxWidth - indent * 2);
@@ -669,20 +767,24 @@ function renderPre(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number): 
   return rectH + 4;
 }
 
+// ---------------------------------------------------------------------------
+// Table rendering — fixed: per-cell text wrapping + dynamic row height
+// ---------------------------------------------------------------------------
 function computeColWidths(rows: RowData[], maxWidth: number): number[] {
   if (rows.length === 0) return [maxWidth];
 
   const colCount = Math.max(...rows.map((r) => r.cells.length));
   if (colCount === 0) return [maxWidth];
 
+  // Base widths: use a rough character-width estimate
   const colWidths = new Array(colCount).fill(0);
 
   for (const row of rows) {
     for (let i = 0; i < row.cells.length; i++) {
       const cell = row.cells[i];
-      const font = cell.styles.fontWeight === "bold" ? "bold" : "regular";
       const size = cell.styles.fontSize ?? 10;
-      const w = cell.text.length * size * 0.5;
+      // 0.55 is a conservative character-width ratio for Helvetica
+      const w = cell.text.length * size * 0.55 + 20; // +20 for padding
       if (w > colWidths[i]) colWidths[i] = w;
     }
   }
@@ -691,14 +793,18 @@ function computeColWidths(rows: RowData[], maxWidth: number): number[] {
   if (total > maxWidth) {
     const ratio = maxWidth / total;
     for (let i = 0; i < colWidths.length; i++) {
-      colWidths[i] = Math.floor(colWidths[i] * ratio);
+      colWidths[i] = Math.max(40, Math.floor(colWidths[i] * ratio));
     }
+    // Re-normalise after flooring
+    const newTotal = colWidths.reduce((a, b) => a + b, 0);
+    if (newTotal < maxWidth)
+      colWidths[colWidths.length - 1] += maxWidth - newTotal;
   } else if (total < maxWidth) {
     const extra = maxWidth - total;
-    const avgAdd = Math.floor(extra / colCount);
-    for (let i = 0; i < colWidths.length; i++) {
-      colWidths[i] += avgAdd;
-    }
+    const add = Math.floor(extra / colCount);
+    for (let i = 0; i < colWidths.length; i++) colWidths[i] += add;
+    colWidths[colWidths.length - 1] +=
+      maxWidth - colWidths.reduce((a, b) => a + b, 0);
   }
 
   return colWidths;
@@ -706,7 +812,6 @@ function computeColWidths(rows: RowData[], maxWidth: number): number[] {
 
 function parseTable(node: PdfNode): TableData | null {
   const rows: RowData[] = [];
-  let currentRow: RowData | null = null;
 
   function processCell(el: PdfNode): string {
     let text = "";
@@ -739,7 +844,8 @@ function parseTable(node: PdfNode): TableData | null {
     }
 
     if (cells.length > 0) {
-      const isHeader = el.children.some((c) => c.type === "element" && c.tag === "th") ||
+      const isHeader =
+        el.children.some((c) => c.type === "element" && c.tag === "th") ||
         false;
       rows.push({ cells, isHeader, height: 0 });
     }
@@ -749,20 +855,42 @@ function parseTable(node: PdfNode): TableData | null {
     for (const c of el.children) {
       if (c.type === "element" && c.tag === "tr") {
         processTr(c);
-      } else if (c.type === "element" && ["thead", "tbody", "tfoot"].includes(c.tag || "")) {
+      } else if (
+        c.type === "element" &&
+        ["thead", "tbody", "tfoot"].includes(c.tag || "")
+      ) {
         processSection(c);
       }
     }
   }
 
   processSection(node);
-
   if (rows.length === 0) return null;
-
   return { rows, colWidths: [], totalWidth: 0 };
 }
 
-function renderTable(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number): number {
+/**
+ * Estimate how many lines a cell's text will wrap to, given a column width.
+ */
+function estimateWrappedLineCount(
+  text: string,
+  font: PDFFont,
+  size: number,
+  colWidth: number,
+  padH: number,
+): number {
+  const usable = colWidth - padH * 2;
+  if (usable <= 0 || !text) return 1;
+  const lines = wrapText(text, font, size, usable);
+  return Math.max(1, lines.length);
+}
+
+function renderTable(
+  ctx: RenderCtx,
+  node: PdfNode,
+  x: number,
+  maxWidth: number,
+): number {
   const table = parseTable(node);
   if (!table || table.rows.length === 0) return 0;
 
@@ -773,17 +901,34 @@ function renderTable(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number)
 
   ensureSpace(ctx, 20);
 
-  const tableX = x;
   const colWidths = computeColWidths(table.rows, maxWidth);
-  const totalW = colWidths.reduce((a, b) => a + b, 0);
-  const lineH = 14;
+  const padH = 6; // horizontal cell padding (each side)
+  const padV = 5; // vertical cell padding (each side)
+  const baseLineH = 12; // line-height per text line in a cell
 
-  let startY = ctx.y;
+  const startY = ctx.y;
 
   for (let ri = 0; ri < table.rows.length; ri++) {
     const row = table.rows[ri];
-    const cellH = Math.max(lineH + 8, 22);
 
+    // --- Compute dynamic row height based on worst-case wrapped line count ---
+    let maxLines = 1;
+    for (let ci = 0; ci < row.cells.length && ci < colWidths.length; ci++) {
+      const cell = row.cells[ci];
+      const font = row.isHeader ? ctx.fonts.bold : findFont(ctx, cell.styles);
+      const size = computeFontSize(cell.styles, row.isHeader ? 11 : 10);
+      const lineCount = estimateWrappedLineCount(
+        cell.text,
+        font,
+        size,
+        colWidths[ci],
+        padH,
+      );
+      if (lineCount > maxLines) maxLines = lineCount;
+    }
+    const cellH = maxLines * baseLineH + padV * 2;
+
+    // Page-break before this row if it won't fit
     if (ctx.y - cellH < ctx.marginBottom) {
       const newPage = ctx.doc.addPage([ctx.pageWidth, ctx.pageHeight]);
       ctx.page = newPage;
@@ -791,62 +936,97 @@ function renderTable(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number)
       ctx.pageNum++;
     }
 
-    const rowY = ctx.y;
+    const rowTop = ctx.y; // top edge of the row in PDF coordinates
+    const rowBottom = rowTop - cellH;
 
     for (let ci = 0; ci < row.cells.length && ci < colWidths.length; ci++) {
       const cell = row.cells[ci];
       const cellW = colWidths[ci];
-      const cellX = tableX + colWidths.slice(0, ci).reduce((a, b) => a + b, 0);
+      const cellX = x + colWidths.slice(0, ci).reduce((a, b) => a + b, 0);
 
+      // Draw background
       if (row.isHeader) {
-        drawRects(ctx, cellX, rowY - cellH, cellW, cellH, headerBg);
+        drawRects(ctx, cellX, rowBottom, cellW, cellH, headerBg);
       } else if (ri % 2 === 0) {
-        drawRects(ctx, cellX, rowY - cellH, cellW, cellH, altRowBg);
+        drawRects(ctx, cellX, rowBottom, cellW, cellH, altRowBg);
       }
 
-      const textColor: RgbColor = row.isHeader ? headerTextColor : (cell.styles.color ?? BLACK);
+      // Choose font and color
+      const textColor: RgbColor = row.isHeader
+        ? headerTextColor
+        : cell.styles.color ?? BLACK;
       const font = row.isHeader ? ctx.fonts.bold : findFont(ctx, cell.styles);
-      const size = computeFontSize(cell.styles, 10);
-      const align = cell.styles.textAlign ?? (ci === colWidths.length - 1 ? "right" : "left");
+      const size = computeFontSize(cell.styles, row.isHeader ? 11 : 10);
+      const align: "left" | "center" | "right" =
+        (cell.styles.textAlign as "left" | "center" | "right") ??
+        (ci === colWidths.length - 1 ? "right" : "left");
 
-      const pad = 6;
-      const textX = cellX + pad;
-      const textMaxW = cellW - pad * 2;
-      const textY = rowY - cellH + 4;
+      const textX = cellX + padH;
+      const textMaxW = cellW - padH * 2;
 
-      const renders = arrangeText(cell.text, font, size, textMaxW, align, textColor, textX, textY);
+      // Wrap text and draw each line at the correct vertical position
+      const lines = wrapText(cell.text, font, size, textMaxW);
+      const totalTextH = lines.length * baseLineH;
+      // Vertically centre the text block within the cell
+      let lineY = rowTop - (cellH - totalTextH) / 2 - size;
 
-      for (const r of renders) {
-        if (r.text) {
-          ctx.page.drawText(r.text, {
-            x: r.x,
-            y: textY + 1,
-            size: r.size,
-            font: r.font,
-            color: rgb(r.color[0], r.color[1], r.color[2]),
-          });
-        }
+      for (const line of lines) {
+        const lw = font.widthOfTextAtSize(line, size);
+        let lx = textX;
+        if (align === "center") lx = textX + (textMaxW - lw) / 2;
+        else if (align === "right") lx = textX + textMaxW - lw;
+
+        ctx.page.drawText(line, {
+          x: lx,
+          y: lineY,
+          size,
+          font,
+          color: rgb(textColor[0], textColor[1], textColor[2]),
+        });
+        lineY -= baseLineH;
       }
 
-      drawLine(ctx, cellX, rowY - cellH, cellX + cellW, rowY - cellH, borderColor, 0.5);
-      drawLine(ctx, cellX, rowY, cellX + cellW, rowY, borderColor, 0.5);
-      drawLine(ctx, cellX, rowY - cellH, cellX, rowY, borderColor, 0.5);
+      // Cell borders
+      drawLine(
+        ctx,
+        cellX,
+        rowBottom,
+        cellX + cellW,
+        rowBottom,
+        borderColor,
+        0.5,
+      );
+      drawLine(ctx, cellX, rowTop, cellX + cellW, rowTop, borderColor, 0.5);
+      drawLine(ctx, cellX, rowBottom, cellX, rowTop, borderColor, 0.5);
       if (ci === row.cells.length - 1 || ci === colWidths.length - 1) {
-        drawLine(ctx, cellX + cellW, rowY - cellH, cellX + cellW, rowY, borderColor, 0.5);
+        drawLine(
+          ctx,
+          cellX + cellW,
+          rowBottom,
+          cellX + cellW,
+          rowTop,
+          borderColor,
+          0.5,
+        );
       }
     }
 
-    ctx.y -= cellH;
-
-    if (ri < table.rows.length - 1) {
-      ctx.y -= 0;
-    }
+    ctx.y = rowBottom;
   }
 
   return Math.abs(ctx.y - startY);
 }
 
-function renderList(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number, ordered: boolean): number {
+// ---------------------------------------------------------------------------
+// List rendering
+// ---------------------------------------------------------------------------
+function renderList(
+  ctx: RenderCtx,
+  node: PdfNode,
+  x: number,
+  maxWidth: number,
+  ordered: boolean,
+): number {
   let totalH = 0;
   let index = 1;
 
@@ -855,23 +1035,28 @@ function renderList(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number, 
       ensureSpace(ctx, 16);
 
       const bullet = ordered ? `${index}.` : "\u2022";
-      const font = ctx.fonts.regular;
       const bulletX = x + 10;
       const textX = x + 24;
 
       ctx.page.drawText(bullet, {
         x: bulletX,
-        y: ctx.y - 4,
+        y: ctx.y - 12,
         size: 11,
-        font,
+        font: ctx.fonts.regular,
         color: rgb(0.3, 0.3, 0.3),
       });
 
       if (child.children.length > 0) {
         const firstChild = child.children[0];
         if (firstChild.type === "text" && firstChild.text) {
-          const remaining = firstChild.text;
-          renderTextContent(ctx, remaining, mergeStyles(firstChild.styles, {}), textX, ctx.y, maxWidth - 24);
+          renderTextContent(
+            ctx,
+            firstChild.text,
+            mergeStyles(firstChild.styles, {}),
+            textX,
+            ctx.y,
+            maxWidth - 24,
+          );
         } else {
           for (const c of child.children) {
             renderNode(ctx, c, textX, maxWidth - 24);
@@ -892,15 +1077,57 @@ function renderList(ctx: RenderCtx, node: PdfNode, x: number, maxWidth: number, 
   return totalH;
 }
 
+// ---------------------------------------------------------------------------
+// Helper drawing functions
+// ---------------------------------------------------------------------------
+function drawRects(
+  ctx: RenderCtx,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: RgbColor,
+) {
+  ctx.page.drawRectangle({
+    x,
+    y,
+    width: w,
+    height: h,
+    color: rgb(color[0], color[1], color[2]),
+  });
+}
+
+function drawLine(
+  ctx: RenderCtx,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: RgbColor,
+  thickness: number,
+) {
+  ctx.page.drawLine({
+    start: { x: x1, y: y1 },
+    end: { x: x2, y: y2 },
+    thickness,
+    color: rgb(color[0], color[1], color[2]),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Header / footer
+// ---------------------------------------------------------------------------
 function renderFooter(ctx: RenderCtx, text: string) {
   const font = ctx.fonts.regular;
   const size = 9;
-  const footerText = text.replace("{page}", String(ctx.pageNum)).replace("{total}", String(ctx.totalPages));
+  const footerText = text
+    .replace("{page}", String(ctx.pageNum))
+    .replace("{total}", String(ctx.totalPages));
   const w = font.widthOfTextAtSize(footerText, size);
-  const x = (ctx.pageWidth - w) / 2;
+  const fx = (ctx.pageWidth - w) / 2;
 
   ctx.page.drawText(footerText, {
-    x,
+    x: fx,
     y: ctx.marginBottom - 15,
     size,
     font,
@@ -911,12 +1138,14 @@ function renderFooter(ctx: RenderCtx, text: string) {
 function renderHeader(ctx: RenderCtx, text: string) {
   const font = ctx.fonts.regular;
   const size = 9;
-  const headerText = text.replace("{page}", String(ctx.pageNum)).replace("{total}", String(ctx.totalPages));
+  const headerText = text
+    .replace("{page}", String(ctx.pageNum))
+    .replace("{total}", String(ctx.totalPages));
   const w = font.widthOfTextAtSize(headerText, size);
-  const x = (ctx.pageWidth - w) / 2;
+  const fx = (ctx.pageWidth - w) / 2;
 
   ctx.page.drawText(headerText, {
-    x,
+    x: fx,
     y: ctx.pageHeight - ctx.marginTop + 8,
     size,
     font,
@@ -924,6 +1153,9 @@ function renderHeader(ctx: RenderCtx, text: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
 export async function renderHtmlToPdf(
   html: string,
   options: {
@@ -940,10 +1172,10 @@ export async function renderHtmlToPdf(
   const {
     pageSize = "A4",
     orientation = "portrait",
-    marginTop = 40,
-    marginRight = 40,
+    marginTop = 50,
+    marginRight = 50,
     marginBottom = 50,
-    marginLeft = 40,
+    marginLeft = 50,
     headerText = "",
     footerText = "",
   } = options;
@@ -952,7 +1184,9 @@ export async function renderHtmlToPdf(
   const regularFont = await doc.embedFont(StandardFonts.Helvetica);
   const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
   const italicFont = await doc.embedFont(StandardFonts.HelveticaOblique);
-  const boldItalicFont = await doc.embedFont(StandardFonts.HelveticaBoldOblique);
+  const boldItalicFont = await doc.embedFont(
+    StandardFonts.HelveticaBoldOblique,
+  );
   const monoFont = await doc.embedFont(StandardFonts.Courier);
   const monoBoldFont = await doc.embedFont(StandardFonts.CourierBold);
 
@@ -991,11 +1225,10 @@ export async function renderHtmlToPdf(
     renderNode(ctx, node, marginLeft, pageWidth - marginLeft - marginRight);
   }
 
+  // Draw header/footer on every page
   ctx.totalPages = ctx.doc.getPageCount();
-
   for (let i = 0; i < ctx.totalPages; i++) {
-    const p = ctx.doc.getPages()[i];
-    ctx.page = p;
+    ctx.page = ctx.doc.getPages()[i];
     ctx.pageNum = i + 1;
     if (footerText) renderFooter(ctx, footerText);
     if (headerText) renderHeader(ctx, headerText);

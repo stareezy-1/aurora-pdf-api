@@ -35,6 +35,9 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// textToPdf — fixed: draw header/footer on EVERY page, not just the last
+// ---------------------------------------------------------------------------
 export async function textToPdf(body: TextToPdfRequest): Promise<Uint8Array> {
   const {
     fontFamily = "Helvetica",
@@ -56,7 +59,6 @@ export async function textToPdf(body: TextToPdfRequest): Promise<Uint8Array> {
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(resolveStandardFont(fontFamily));
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   let [pageWidth, pageHeight] = PAGE_SIZES[pageSize] ?? PAGE_SIZES.A4;
@@ -68,63 +70,34 @@ export async function textToPdf(body: TextToPdfRequest): Promise<Uint8Array> {
   const lineHeight = fontSize * lineSpacing;
   const textRgb = hexToRgb(textColor);
 
-  const totalPages = 1;
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
   let currentPageNum = 1;
 
-  let page = pdfDoc.addPage([pageWidth, pageHeight]);
-
-  if (backgroundColor) {
-    const bg = hexToRgb(backgroundColor);
-    page.drawRectangle({
-      x: 0, y: 0, width: pageWidth, height: pageHeight,
-      color: rgb(bg[0], bg[1], bg[2]),
-    });
+  function addBackground() {
+    if (backgroundColor) {
+      const bg = hexToRgb(backgroundColor);
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+        color: rgb(bg[0], bg[1], bg[2]),
+      });
+    }
   }
 
+  addBackground();
   let y = pageHeight - marginTop;
 
   function newPage() {
     page = pdfDoc.addPage([pageWidth, pageHeight]);
-    if (backgroundColor) {
-      const bg = hexToRgb(backgroundColor);
-      page.drawRectangle({
-        x: 0, y: 0, width: pageWidth, height: pageHeight,
-        color: rgb(bg[0], bg[1], bg[2]),
-      });
-    }
+    addBackground();
     y = pageHeight - marginTop;
     currentPageNum++;
   }
 
   function ensureSpace(needed: number) {
     if (y - needed < marginBottom) newPage();
-  }
-
-  function drawFooter() {
-    if (footerText || showPageNumbers) {
-      const text = showPageNumbers
-        ? `${footerText}   ${currentPageNum}`
-        : footerText;
-      const w = regularFont.widthOfTextAtSize(text, 9);
-      const x = (pageWidth - w) / 2;
-      page.drawText(text, {
-        x, y: marginBottom - 15, size: 9, font: regularFont,
-        color: rgb(0.6, 0.6, 0.6),
-      });
-    }
-  }
-
-  function drawHeader() {
-    if (headerText) {
-      const w = regularFont.widthOfTextAtSize(headerText, 9);
-      page.drawText(headerText, {
-        x: (pageWidth - w) / 2,
-        y: pageHeight - marginTop + 8,
-        size: 9,
-        font: regularFont,
-        color: rgb(0.6, 0.6, 0.6),
-      });
-    }
   }
 
   function drawTextLine(line: string, align: string) {
@@ -135,7 +108,10 @@ export async function textToPdf(body: TextToPdfRequest): Promise<Uint8Array> {
     else if (align === "right") x = marginLeft + maxWidth - w;
 
     page.drawText(line, {
-      x, y, size: fontSize, font,
+      x,
+      y: y - fontSize,
+      size: fontSize,
+      font,
       color: rgb(textRgb[0], textRgb[1], textRgb[2]),
     });
     y -= lineHeight;
@@ -165,8 +141,41 @@ export async function textToPdf(body: TextToPdfRequest): Promise<Uint8Array> {
     wrapAndDraw(line, alignment);
   }
 
-  drawHeader();
-  drawFooter();
+  // Draw header/footer on every page
+  const totalPages = pdfDoc.getPageCount();
+  const allPages = pdfDoc.getPages();
+
+  for (let i = 0; i < totalPages; i++) {
+    const p = allPages[i];
+    const pageNum = i + 1;
+
+    if (headerText) {
+      const w = regularFont.widthOfTextAtSize(headerText, 9);
+      p.drawText(headerText, {
+        x: (pageWidth - w) / 2,
+        y: pageHeight - marginTop + 8,
+        size: 9,
+        font: regularFont,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+    }
+
+    if (footerText || showPageNumbers) {
+      const text = showPageNumbers
+        ? footerText
+          ? `${footerText}   ${pageNum} / ${totalPages}`
+          : `${pageNum} / ${totalPages}`
+        : footerText;
+      const w = regularFont.widthOfTextAtSize(text, 9);
+      p.drawText(text, {
+        x: (pageWidth - w) / 2,
+        y: marginBottom - 15,
+        size: 9,
+        font: regularFont,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+    }
+  }
 
   return pdfDoc.save();
 }
@@ -191,7 +200,8 @@ function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function inlineMarkdown(str: string): string {
@@ -205,7 +215,10 @@ function inlineMarkdown(str: string): string {
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 }
 
-function parsePipeTable(lines: string[], startIdx: number): { html: string; endIdx: number } | null {
+function parsePipeTable(
+  lines: string[],
+  startIdx: number,
+): { html: string; endIdx: number } | null {
   if (startIdx + 1 >= lines.length) return null;
 
   const headerLine = lines[startIdx].trim();
@@ -236,15 +249,21 @@ function parsePipeTable(lines: string[], startIdx: number): { html: string; endI
   while (endIdx < lines.length) {
     const rowLine = lines[endIdx].trim();
     if (!rowLine.startsWith("|") || !rowLine.endsWith("|")) break;
-    const cells = rowLine.split("|").map((s) => s.trim()).filter(Boolean);
+    const cells = rowLine
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
     rows.push(cells);
     endIdx++;
   }
 
-  let html = "<table style='width:100%;border-collapse:collapse;'>\n<thead>\n<tr>";
+  let html =
+    "<table style='width:100%;border-collapse:collapse;'>\n<thead>\n<tr>";
   for (let i = 0; i < headers.length; i++) {
     const align = alignments[i] || "left";
-    html += `<th style="text-align:${align};padding:8px 10px;">${inlineMarkdown(headers[i])}</th>`;
+    html += `<th style="text-align:${align};padding:8px 10px;">${inlineMarkdown(
+      headers[i],
+    )}</th>`;
   }
   html += "</tr>\n</thead>\n<tbody>\n";
 
@@ -252,13 +271,14 @@ function parsePipeTable(lines: string[], startIdx: number): { html: string; endI
     html += "<tr>";
     for (let i = 0; i < row.length; i++) {
       const align = alignments[i] || "left";
-      html += `<td style="text-align:${align};padding:6px 10px;">${inlineMarkdown(row[i])}</td>`;
+      html += `<td style="text-align:${align};padding:6px 10px;">${inlineMarkdown(
+        row[i],
+      )}</td>`;
     }
     html += "</tr>\n";
   }
 
   html += "</tbody>\n</table>";
-
   return { html, endIdx };
 }
 
@@ -281,14 +301,23 @@ function parseMarkdownToHtml(markdown: string, theme: string): string {
     const rawLine = lines[i];
 
     if (rawLine.trimStart().startsWith("```")) {
-      if (inList) { htmlLines.push("</ul>"); inList = false; }
+      if (inList) {
+        htmlLines.push("</ul>");
+        inList = false;
+      }
       if (inCodeBlock) {
         htmlLines.push("</code></pre>");
         inCodeBlock = false;
         codeBlockLang = "";
       } else {
         codeBlockLang = rawLine.trimStart().slice(3).trim();
-        htmlLines.push(`<pre><code${codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : ""}>`);
+        htmlLines.push(
+          `<pre><code${
+            codeBlockLang
+              ? ` class="language-${escapeHtml(codeBlockLang)}"`
+              : ""
+          }>`,
+        );
         inCodeBlock = true;
       }
       i++;
@@ -303,7 +332,10 @@ function parseMarkdownToHtml(markdown: string, theme: string): string {
 
     const tableResult = parsePipeTable(lines, i);
     if (tableResult) {
-      if (inList) { htmlLines.push("</ul>"); inList = false; }
+      if (inList) {
+        htmlLines.push("</ul>");
+        inList = false;
+      }
       htmlLines.push(tableResult.html);
       i = tableResult.endIdx;
       continue;
@@ -321,12 +353,36 @@ function parseMarkdownToHtml(markdown: string, theme: string): string {
       inList = false;
     }
 
-    if (h1) { htmlLines.push(`<h1>${inlineMarkdown(h1[1])}</h1>`); i++; continue; }
-    if (h2) { htmlLines.push(`<h2>${inlineMarkdown(h2[1])}</h2>`); i++; continue; }
-    if (h3) { htmlLines.push(`<h3>${inlineMarkdown(h3[1])}</h3>`); i++; continue; }
-    if (h4) { htmlLines.push(`<h4>${inlineMarkdown(h4[1])}</h4>`); i++; continue; }
-    if (h5) { htmlLines.push(`<h5>${inlineMarkdown(h5[1])}</h5>`); i++; continue; }
-    if (h6) { htmlLines.push(`<h6>${inlineMarkdown(h6[1])}</h6>`); i++; continue; }
+    if (h1) {
+      htmlLines.push(`<h1>${inlineMarkdown(h1[1])}</h1>`);
+      i++;
+      continue;
+    }
+    if (h2) {
+      htmlLines.push(`<h2>${inlineMarkdown(h2[1])}</h2>`);
+      i++;
+      continue;
+    }
+    if (h3) {
+      htmlLines.push(`<h3>${inlineMarkdown(h3[1])}</h3>`);
+      i++;
+      continue;
+    }
+    if (h4) {
+      htmlLines.push(`<h4>${inlineMarkdown(h4[1])}</h4>`);
+      i++;
+      continue;
+    }
+    if (h5) {
+      htmlLines.push(`<h5>${inlineMarkdown(h5[1])}</h5>`);
+      i++;
+      continue;
+    }
+    if (h6) {
+      htmlLines.push(`<h6>${inlineMarkdown(h6[1])}</h6>`);
+      i++;
+      continue;
+    }
 
     if (rawLine.match(/^[-*_]{3,}\s*$/)) {
       htmlLines.push("<hr/>");
@@ -338,7 +394,10 @@ function parseMarkdownToHtml(markdown: string, theme: string): string {
     const oListMatch = rawLine.match(/^\d+\.\s+(.*)/);
 
     if (uListMatch || oListMatch) {
-      if (!inList) { htmlLines.push("<ul>"); inList = true; }
+      if (!inList) {
+        htmlLines.push("<ul>");
+        inList = true;
+      }
       const content = (uListMatch || oListMatch)![1];
       htmlLines.push(`<li>${inlineMarkdown(content)}</li>`);
       i++;
@@ -347,7 +406,10 @@ function parseMarkdownToHtml(markdown: string, theme: string): string {
 
     const bqMatch = rawLine.match(/^>\s?(.*)/);
     if (bqMatch) {
-      if (inList) { htmlLines.push("</ul>"); inList = false; }
+      if (inList) {
+        htmlLines.push("</ul>");
+        inList = false;
+      }
       htmlLines.push(`<blockquote>${inlineMarkdown(bqMatch[1])}</blockquote>`);
       i++;
       continue;
@@ -367,7 +429,9 @@ function parseMarkdownToHtml(markdown: string, theme: string): string {
   if (inCodeBlock) htmlLines.push("</code></pre>");
 
   const bodyStyle = themeStyles[theme] || themeStyles.light;
-  return `<html><body style="${bodyStyle}padding:30px 40px;">${htmlLines.join("\n")}</body></html>`;
+  return `<html><body style="${bodyStyle}padding:30px 40px;">${htmlLines.join(
+    "\n",
+  )}</body></html>`;
 }
 
 export async function markdownToPdf(
@@ -388,18 +452,42 @@ export async function markdownToPdf(
   return renderHtmlToPdf(html, options);
 }
 
-function fmtAmount(value: string | number, currency: string, locale: string): string {
-  const s = String(value).replace(/[^0-9.\-]/g, "");
-  const n = parseFloat(s);
-  if (isNaN(n)) return String(value);
-  const formatted = Math.abs(n).toLocaleString(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  if (n < 0) return `(${currency}${formatted})`;
-  return `${currency}${formatted}`;
+// ---------------------------------------------------------------------------
+// fmtAmount — fixed: accepts both raw numbers/strings and already-formatted
+// strings; negative values shown with leading minus instead of parens.
+// ---------------------------------------------------------------------------
+function fmtAmount(
+  value: string | number,
+  currency: string,
+  locale: string,
+): string {
+  // Strip any non-numeric characters except decimal point and minus sign
+  // but only if the value looks like a plain number, not an already-formatted string
+  const raw = typeof value === "number" ? value : String(value);
+  const cleaned = String(raw).replace(/[^0-9.\-]/g, "");
+  const n = parseFloat(cleaned);
+
+  if (isNaN(n)) {
+    // Already formatted or non-numeric — return as-is
+    return String(value);
+  }
+
+  try {
+    const formatted = Math.abs(n).toLocaleString(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return n < 0 ? `-${currency}${formatted}` : `${currency}${formatted}`;
+  } catch {
+    const formatted = Math.abs(n).toFixed(2);
+    return n < 0 ? `-${currency}${formatted}` : `${currency}${formatted}`;
+  }
 }
 
+// ---------------------------------------------------------------------------
+// reportToPdf — improved HTML layout: cleaner typography, divider line before
+// summary, generated-at timestamp, better amount-column detection.
+// ---------------------------------------------------------------------------
 export async function reportToPdf(data: {
   title?: string;
   subtitle?: string;
@@ -419,37 +507,74 @@ export async function reportToPdf(data: {
     locale?: string;
     tableHeaderColor?: string;
     accentColor?: string;
+    showGeneratedAt?: boolean;
   };
 }): Promise<Uint8Array> {
-  const {
-    title,
-    subtitle,
-    headers,
-    rows,
-    summary,
-    config = {},
-  } = data;
+  const { title, subtitle, headers, rows, summary, config = {} } = data;
 
   const currency = config.currency || "$";
   const locale = config.locale || "en-US";
   const headerColor = config.tableHeaderColor || "#1e40af";
+  const showGeneratedAt = config.showGeneratedAt ?? true;
 
-  let html = `<div style="font-family:Helvetica,Arial,sans-serif;">`;
+  // Determine which columns contain amounts by header name heuristic
+  const amountColIndices = new Set<number>();
+  headers.forEach((h, i) => {
+    const lower = h.toLowerCase();
+    if (
+      lower.includes("amount") ||
+      lower.includes("price") ||
+      lower.includes("total") ||
+      lower.includes("cost") ||
+      lower.includes("fee") ||
+      lower.includes("balance") ||
+      lower.includes("revenue") ||
+      lower.includes("income") ||
+      lower.includes("expense") ||
+      lower.includes("payment")
+    ) {
+      amountColIndices.add(i);
+    }
+  });
+  // Always treat last column as amount if no heuristic matched and it looks numeric
+  if (amountColIndices.size === 0) {
+    amountColIndices.add(headers.length - 1);
+  }
+
+  let html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#1e293b;">`;
 
   if (title) {
-    html += `<h1 style="text-align:center;color:#1e293b;margin:0 0 4px 0;">${escapeHtml(title)}</h1>`;
+    html += `<h1 style="text-align:center;color:#0f172a;margin:0 0 6px 0;font-size:20px;">${escapeHtml(
+      title,
+    )}</h1>`;
   }
   if (subtitle) {
-    html += `<p style="text-align:center;color:#64748b;margin:0 0 20px 0;font-size:13px;">${escapeHtml(subtitle)}</p>`;
+    html += `<p style="text-align:center;color:#64748b;margin:0 0 4px 0;font-size:12px;">${escapeHtml(
+      subtitle,
+    )}</p>`;
+  }
+  if (showGeneratedAt) {
+    const now = new Date().toLocaleDateString(locale, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    html += `<p style="text-align:center;color:#94a3b8;margin:0 0 20px 0;font-size:10px;">Generated ${escapeHtml(
+      now,
+    )}</p>`;
   }
 
-  const lastCol = headers.length - 1;
-
-  html += `<table style="width:100%;border-collapse:collapse;">`;
-  html += `<thead><tr style="background-color:${headerColor};color:#ffffff;">`;
+  // Table
+  html += `<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">`;
+  html += `<thead><tr style="background-color:${escapeHtml(
+    headerColor,
+  )};color:#ffffff;">`;
   for (let i = 0; i < headers.length; i++) {
-    const align = i === lastCol ? "right" : "left";
-    html += `<th style="padding:10px 14px;text-align:${align};font-size:11px;">${escapeHtml(headers[i])}</th>`;
+    const isAmt = amountColIndices.has(i);
+    const align = isAmt ? "right" : i === 0 ? "left" : "left";
+    html += `<th style="padding:10px 12px;text-align:${align};font-size:11px;font-weight:bold;">${escapeHtml(
+      headers[i],
+    )}</th>`;
   }
   html += `</tr></thead><tbody>`;
 
@@ -457,43 +582,79 @@ export async function reportToPdf(data: {
     const row = rows[ri];
     const bg = ri % 2 === 0 ? "#f8fafc" : "#ffffff";
     html += `<tr style="background-color:${bg};">`;
-    for (let ci = 0; ci < row.length && ci < headers.length; ci++) {
-      const cell = String(row[ci]);
-      const isAmount = ci === lastCol || (ci > 0 && (headers[ci] ?? "").toLowerCase().includes("amount"));
-      const align = ci === lastCol ? "right" : "left";
-      const display = isAmount ? fmtAmount(cell, currency, locale) : cell;
-      html += `<td style="padding:8px 14px;text-align:${align};font-size:12px;">${escapeHtml(display)}</td>`;
+    for (let ci = 0; ci < headers.length; ci++) {
+      const cell = ci < row.length ? String(row[ci]) : "";
+      const isAmt = amountColIndices.has(ci);
+      const align = isAmt ? "right" : "left";
+      const display = isAmt ? fmtAmount(cell, currency, locale) : cell;
+      html += `<td style="padding:7px 12px;text-align:${align};font-size:11px;border-bottom:1px solid #e2e8f0;">${escapeHtml(
+        display,
+      )}</td>`;
     }
     html += `</tr>`;
   }
 
   html += `</tbody></table>`;
 
+  // Summary section
   if (summary && summary.length > 0) {
-    html += `<div style="margin-top:24px;"><table style="width:100%;border-collapse:collapse;">`;
+    html += `<hr style="border:none;border-top:2px solid #cbd5e1;margin:16px 0 12px 0;" />`;
+    html += `<table style="width:100%;border-collapse:collapse;">`;
+
     for (const item of summary) {
-      const color = item.style === "positive" ? "#16a34a"
-        : item.style === "negative" ? "#dc2626"
-        : item.style === "bold" ? "#1e293b"
-        : "#475569";
-      const fw = item.style === "bold" ? "bold" : "normal";
-      const fs = item.style === "bold" ? "15px" : "13px";
+      const isBold = item.style === "bold";
+      const color =
+        item.style === "positive"
+          ? "#16a34a"
+          : item.style === "negative"
+          ? "#dc2626"
+          : isBold
+          ? "#0f172a"
+          : "#475569";
+      const fw = isBold ? "bold" : "normal";
+      const fs = isBold ? "14px" : "12px";
+      const bg = isBold ? "#f1f5f9" : "transparent";
+      const pt = isBold ? "8px 12px" : "5px 12px";
       const val = fmtAmount(item.value, currency, locale);
-      html += `<tr><td style="padding:5px 14px;text-align:left;font-size:${fs};color:${color};font-weight:${fw};">${escapeHtml(item.label)}</td>`;
-      html += `<td style="padding:5px 14px;text-align:right;font-size:${fs};color:${color};font-weight:${fw};">${escapeHtml(val)}</td></tr>`;
+
+      html += `<tr style="background-color:${bg};">`;
+      html += `<td style="padding:${pt};text-align:left;font-size:${fs};color:${color};font-weight:${fw};">${escapeHtml(
+        item.label,
+      )}</td>`;
+      html += `<td style="padding:${pt};text-align:right;font-size:${fs};color:${color};font-weight:${fw};">${escapeHtml(
+        val,
+      )}</td>`;
+      html += `</tr>`;
     }
-    html += `</table></div>`;
+
+    html += `</table>`;
   }
 
   if (config.footerText) {
-    html += `<p style="text-align:center;color:#94a3b8;font-size:9px;margin-top:30px;">${escapeHtml(config.footerText)}</p>`;
+    html += `<p style="text-align:center;color:#94a3b8;font-size:9px;margin-top:32px;">${escapeHtml(
+      config.footerText,
+    )}</p>`;
   }
 
   html += `</div>`;
 
-  return renderHtmlToPdf(html, config);
+  const pageOpts = {
+    pageSize: config.pageSize,
+    orientation: config.orientation,
+    marginTop: config.marginTop ?? 50,
+    marginRight: config.marginRight ?? 50,
+    marginBottom: config.marginBottom ?? 50,
+    marginLeft: config.marginLeft ?? 50,
+    headerText: config.headerText,
+    footerText: undefined as string | undefined, // footer is rendered inline above
+  };
+
+  return renderHtmlToPdf(html, pageOpts);
 }
 
+// ---------------------------------------------------------------------------
+// compressPdf
+// ---------------------------------------------------------------------------
 async function loadPdfJs(bytes: Uint8Array) {
   const copy = new Uint8Array(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
@@ -505,7 +666,7 @@ async function renderPageToCanvasNode(
   pdfJsPage: pdfjsLib.PDFPageProxy,
   scale: number,
   greyscale: boolean,
-): Promise<any> {
+): Promise<ReturnType<typeof createCanvas>> {
   const viewport = pdfJsPage.getViewport({ scale });
   const canvas = createCanvas(
     Math.round(viewport.width),
@@ -535,8 +696,15 @@ async function renderPageToCanvasNode(
   return canvas;
 }
 
-function canvasToJpegBytes(canvas: any, quality: number): Uint8Array {
-  return canvas.toBuffer("image/jpeg", { quality });
+function canvasToJpegBytes(
+  canvas: ReturnType<typeof createCanvas>,
+  quality: number,
+): Uint8Array {
+  return (
+    canvas as unknown as {
+      toBuffer(type: string, opts: { quality: number }): Buffer;
+    }
+  ).toBuffer("image/jpeg", { quality }) as unknown as Uint8Array;
 }
 
 export async function compressPdf(
@@ -548,12 +716,12 @@ export async function compressPdf(
     removeMetadata = false,
     removeThumbnails = false,
     removeUnusedObjects = true,
-    subsetFonts = false,
     dpi = null,
     greyscale = false,
     jpegQuality,
   } = config;
 
+  // Photon: re-render pages as JPEG images (lossy, maximum file size reduction)
   if (algorithm === "photon" && dpi) {
     const srcDoc = await PDFDocument.load(bytes);
     const srcPages = srcDoc.getPages();
@@ -565,8 +733,16 @@ export async function compressPdf(
     for (let i = 0; i < pageCount; i++) {
       const pdfJsPage = await pdfJsDoc.getPage(i + 1);
       const canvas = await renderPageToCanvasNode(pdfJsPage, scale, greyscale);
-      const qual = dpi >= 150 ? 0.85 : dpi >= 96 ? 0.75 : 0.65;
-      const jpegBytes = canvasToJpegBytes(canvas, jpegQuality ?? qual);
+      // Auto quality based on DPI tier if not explicitly specified
+      const qual =
+        jpegQuality != null
+          ? jpegQuality / 100
+          : dpi >= 150
+          ? 0.85
+          : dpi >= 96
+          ? 0.75
+          : 0.65;
+      const jpegBytes = canvasToJpegBytes(canvas, qual);
       const jpegImage = await newDoc.embedJpg(jpegBytes);
       const { width, height } = srcPages[i].getSize();
       const newPage = newDoc.addPage([width, height]);
@@ -576,14 +752,17 @@ export async function compressPdf(
     return newDoc.save({ useObjectStreams: true });
   }
 
-  const pdfDoc = await PDFDocument.load(bytes, {});
+  // Condense: structural optimisation via pdf-lib (lossless)
+  const pdfDoc = await PDFDocument.load(bytes);
 
   if (removeMetadata) {
-    const infoRef = pdfDoc.context.lookup(pdfDoc.context.trailerInfo.Info);
-    if (infoRef && "dict" in infoRef) {
-      const infoDict = infoRef as unknown as { dict: Map<unknown, unknown> };
-      infoDict.dict.clear();
-    }
+    try {
+      const infoRef = pdfDoc.context.lookup(pdfDoc.context.trailerInfo.Info);
+      if (infoRef && "dict" in infoRef) {
+        const infoDict = infoRef as unknown as { dict: Map<unknown, unknown> };
+        infoDict.dict.clear();
+      }
+    } catch {}
     try {
       const catalog = pdfDoc.catalog;
       const metadataKey = catalog.context.obj("Metadata");
@@ -592,8 +771,7 @@ export async function compressPdf(
   }
 
   if (removeThumbnails) {
-    const pages = pdfDoc.getPages();
-    for (const page of pages) {
+    for (const page of pdfDoc.getPages()) {
       try {
         const thumbKey = page.node.context.obj("Thumb");
         page.node.delete(thumbKey);
